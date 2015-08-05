@@ -172,6 +172,89 @@ class VersionFinderTestCase(APITestCase):
                          [{'compose': 'compose-3', 'packages': ['bash-0:5.6.7-8.x86_64.rpm']}])
 
 
+class FindComposeByReleaseRPMTestCase(APITestCase):
+    fixtures = [
+        "pdc/apps/common/fixtures/test/sigkey.json",
+        "pdc/apps/package/fixtures/test/rpm.json",
+        "pdc/apps/release/fixtures/tests/release.json",
+        "pdc/apps/compose/fixtures/tests/variant.json",
+        "pdc/apps/compose/fixtures/tests/variant_arch.json",
+        "pdc/apps/compose/fixtures/tests/compose_overriderpm.json",
+        "pdc/apps/compose/fixtures/tests/compose.json",
+        "pdc/apps/compose/fixtures/tests/compose_composerpm.json",
+        "pdc/apps/compose/fixtures/tests/more_composes.json",
+    ]
+
+    def test_get_for_release(self):
+        url = reverse('findcomposebyrr-list', kwargs={'rpm_name': 'bash', 'release_id': 'release-1.0'})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data,
+                         [{'compose': 'compose-1', 'packages': ['bash-0:1.2.3-4.b1.x86_64.rpm']},
+                          {'compose': 'compose-2', 'packages': ['bash-0:1.2.3-4.b1.x86_64.rpm']},
+                          {'compose': 'compose-3', 'packages': ['bash-0:5.6.7-8.x86_64.rpm']}])
+
+    def test_get_for_release_with_latest(self):
+        url = reverse('findcomposebyrr-list', kwargs={'rpm_name': 'bash', 'release_id': 'release-1.0'})
+        response = self.client.get(url, {'latest': 'True'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data,
+                         [{'compose': 'compose-3', 'packages': ['bash-0:5.6.7-8.x86_64.rpm']}])
+
+    def test_get_for_excluded_compose_type(self):
+        url = reverse('findcomposebyrr-list', kwargs={'rpm_name': 'bash', 'release_id': 'release-1.0'})
+        response = self.client.get(url, {'excluded_compose_type': 'production'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data,
+                         [{'compose': 'compose-3', 'packages': ['bash-0:5.6.7-8.x86_64.rpm']}])
+
+    def test_get_for_included_compose_type(self):
+        url = reverse('findcomposebyrr-list', kwargs={'rpm_name': 'bash', 'release_id': 'release-1.0'})
+        response = self.client.get(url, {'included_compose_type': 'production'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data,
+                         [{'compose': 'compose-1', 'packages': ['bash-0:1.2.3-4.b1.x86_64.rpm']},
+                          {'compose': 'compose-2', 'packages': ['bash-0:1.2.3-4.b1.x86_64.rpm']}])
+
+
+class FindLatestComposeByComposeRPMTestCase(APITestCase):
+    fixtures = [
+        "pdc/apps/common/fixtures/test/sigkey.json",
+        "pdc/apps/package/fixtures/test/rpm.json",
+        "pdc/apps/release/fixtures/tests/release.json",
+        "pdc/apps/compose/fixtures/tests/variant.json",
+        "pdc/apps/compose/fixtures/tests/variant_arch.json",
+        "pdc/apps/compose/fixtures/tests/compose_overriderpm.json",
+        "pdc/apps/compose/fixtures/tests/compose.json",
+        "pdc/apps/compose/fixtures/tests/compose_composerpm.json",
+        "pdc/apps/compose/fixtures/tests/more_composes.json",
+    ]
+
+    def test_missing_previous_compose(self):
+        url = reverse('findlatestcomposebycr-list', kwargs={'compose_id': 'compose-1', 'rpm_name': 'bash'})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_previous_compose_has_same_version(self):
+        url = reverse('findlatestcomposebycr-list', kwargs={'compose_id': 'compose-2', 'rpm_name': 'bash'})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_previous_compose_has_older_rpm(self):
+        url = reverse('findlatestcomposebycr-list', kwargs={'compose_id': 'compose-3', 'rpm_name': 'bash'})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data.get('compose'), "compose-2")
+        self.assertEqual(response.data.get('packages'), ["bash-0:1.2.3-4.b1.x86_64.rpm"])
+
+    def test_same_version_different_arch(self):
+        """There is a previous compose with same version of package, but with different RPM.arch."""
+        models.ComposeRPM.objects.filter(pk=1).update(rpm=3)
+        url = reverse('findlatestcomposebycr-list', kwargs={'compose_id': 'compose-2', 'rpm_name': 'bash'})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
 class ComposeAPITestCase(TestCaseWithChangeSetMixin, APITestCase):
     fixtures = [
         "pdc/apps/common/fixtures/test/sigkey.json",
